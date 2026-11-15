@@ -79,6 +79,11 @@ main { max-width: 640px; margin: 0 auto; padding: 0 12px; }
 .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
 .tile .num { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
 
+.trend { display: inline-block; margin-right: 6px; font-weight: 800; }
+.trend-up { color: var(--critical); }
+.trend-down { color: var(--good); }
+.trend-flat { color: var(--text-primary); }
+
 /* Diagramm */
 .chart { position: relative; margin-top: 10px; }
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }

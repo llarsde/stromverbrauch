@@ -89,7 +89,9 @@ async function loadHome() {
   $("#t-rate-sub").textContent = `pro Tag · ${s.day ? eur(s.day.eur, 2) : ""} · Ø ${nf(0).format(r.recent_days)} Tage`;
   if (s.deviation) {
     const d = s.deviation.percent;
-    $("#t-dev").textContent = `${d >= 0 ? "+" : "−"}${nf(0).format(Math.abs(d))} %`;
+    // Trendpfeil: ±5 % gilt als gleichbleibend
+    const trend = d > 5 ? ["up", "↑", "mehr Verbrauch"] : d < -5 ? ["down", "↓", "weniger Verbrauch"] : ["flat", "=", "gleichbleibend"];
+    $("#t-dev").innerHTML = `<span class="trend trend-${trend[0]}" title="${trend[2]}" aria-label="${trend[2]}">${trend[1]}</span>${d >= 0 ? "+" : "−"}${nf(0).format(Math.abs(d))} %`;
     $("#t-dev-sub").textContent = `letzte Ablesung ${nf(1).format(s.deviation.last_rate)} vs. ${nf(1).format(s.deviation.reference_rate)} kWh/Tag`;
   } else {
     $("#t-dev").textContent = "–";

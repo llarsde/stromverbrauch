@@ -1,0 +1,12 @@
+services:
+  stromverbrauch:
+    image: ghcr.io/llarsde/stromverbrauch:latest
+    container_name: stromverbrauch
+    restart: unless-stopped
+    ports:
+      - "8085:8080"          # links den Port auf dem OMV anpassen, falls 8085 belegt ist
+    environment:
+      - TZ=Europe/Berlin
+    volumes:
+      # Datenbank und Fotos – diesen Ordner ins Backup aufnehmen
+      - /srv/dev-disk-by-uuid-XXXX/appdata/stromverbrauch:/data

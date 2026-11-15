@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Strom">
+  <title>Stromverbrauch</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Übersicht</h1>
+    <span id="subtitle" class="muted"></span>
+  </header>
+
+  <main>
+    <!-- Übersicht -->
+    <section id="view-home" class="view">
+      <div id="empty" class="card hidden">
+        <h2>Willkommen</h2>
+        <p>Noch keine Daten. Lege unter <a href="#settings">Einstellungen</a> Tarif, Abrechnungszeitraum und Abschlag an
+          (oder importiere eine Datei) und trage dann deine erste <a href="#read">Ablesung</a> ein.</p>
+      </div>
+
+      <div id="hero" class="card hero hidden">
+        <div class="label">Prognose Jahresabrechnung <span id="period-range" class="muted"></span></div>
+        <div class="hero-row">
+          <span id="balance-icon" class="status-icon" aria-hidden="true"></span>
+          <span id="balance" class="hero-number"></span>
+        </div>
+        <div id="balance-label" class="status-label"></div>
+        <div id="balance-range" class="muted small"></div>
+        <dl class="facts">
+          <div><dt>Verbrauch</dt><dd id="p-kwh"></dd></div>
+          <div><dt>Kosten</dt><dd id="p-eur"></dd></div>
+          <div><dt id="p-inst-label">Abschläge</dt><dd id="p-inst"></dd></div>
+          <div><dt>Empfohlener Abschlag</dt><dd id="p-rec"></dd></div>
+        </dl>
+        <p id="break-even" class="small"></p>
+      </div>
+
+      <div id="tiles" class="tiles hidden">
+        <div class="tile"><div class="label">Aktuell</div><div class="num" id="t-rate"></div><div class="muted small" id="t-rate-sub"></div></div>
+        <div class="tile"><div class="label">Abweichung</div><div class="num" id="t-dev"></div><div class="muted small" id="t-dev-sub"></div></div>
+        <div class="tile"><div class="label" id="t-month-label">Monat</div><div class="num" id="t-month"></div><div class="muted small" id="t-month-sub"></div></div>
+        <div class="tile"><div class="label">12 Monate</div><div class="num" id="t-year"></div><div class="muted small" id="t-year-sub"></div></div>
+      </div>
+
+      <div id="chart-card" class="card viz-root hidden">
+        <div class="label">Verbrauch je Ableseintervall</div>
+        <div class="muted small">kWh pro Tag · gestrichelt: Grenze ohne Nachzahlung</div>
+        <div id="chart" class="chart"></div>
+        <details class="table-view"><summary>Als Tabelle</summary><div id="chart-table"></div></details>
+      </div>
+    </section>
+
+    <!-- Ablesen -->
+    <section id="view-read" class="view hidden">
+      <form id="read-form" class="card">
+        <label for="r-value">Zählerstand (kWh)</label>
+        <input id="r-value" name="value" type="text" inputmode="decimal" autocomplete="off" required
+               placeholder="z. B. 7918" class="big-input">
+        <div id="r-last" class="muted small"></div>
+
+        <label for="r-ts">Zeitpunkt</label>
+        <input id="r-ts" name="ts" type="datetime-local" required>
+
+        <label for="r-photo">Foto (optional, als Beleg)</label>
+        <input id="r-photo" name="photo" type="file" accept="image/*" capture="environment">
+
+        <label for="r-kind">Art</label>
+        <select id="r-kind" name="kind">
+          <option value="ablesung">Eigene Ablesung</option>
+          <option value="versorger">Ablesung Versorger / Netzbetreiber</option>
+          <option value="schaetzung">Schätzung Versorger (fließt nicht in Prognose ein)</option>
+        </select>
+
+        <label for="r-note">Notiz (optional)</label>
+        <input id="r-note" name="note" type="text" placeholder="z. B. Urlaub, Gäste …">
+
+        <div id="r-warn" class="warn hidden"></div>
+        <button type="submit" class="primary" id="r-submit">Speichern</button>
+      </form>
+    </section>
+
+    <!-- Verlauf -->
+    <section id="view-history" class="view hidden">
+      <div class="card"><ul id="history" class="list"></ul></div>
+    </section>
+
+    <!-- Einstellungen -->
+    <section id="view-settings" class="view hidden">
+      <div class="card">
+        <h2>Tarif</h2>
+        <ul id="list-tariffs" class="list"></ul>
+        <details><summary>Neuen Tarif / Preisänderung anlegen</summary>
+          <form id="f-tariffs" class="grid">
+            <label>Gültig ab<input name="valid_from" type="date" required></label>
+            <label>Name<input name="name" type="text" placeholder="Tarifname"></label>
+            <label>Arbeitspreis netto (ct/kWh)<input name="energy_ct" type="text" inputmode="decimal" required></label>
+            <label>Stromsteuer netto (ct/kWh)<input name="tax_ct" type="text" inputmode="decimal" value="2,05"></label>
+            <label>Grundpreis netto (€/Jahr)<input name="base_eur_year" type="text" inputmode="decimal" required></label>
+            <label>MwSt. (%)<input name="vat_pct" type="text" inputmode="decimal" value="19"></label>
+            <button class="primary">Hinzufügen</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Abrechnungszeitraum</h2>
+        <ul id="list-periods" class="list"></ul>
+        <details><summary>Neuen Zeitraum anlegen</summary>
+          <form id="f-periods" class="grid">
+            <label>Beginn<input name="start" type="date" required></label>
+            <label>Ende (inklusive)<input name="end" type="date" required></label>
+            <label>Anfangsstand laut Versorger (kWh)<input name="start_value" type="text" inputmode="decimal" required></label>
+            <label>Notiz<input name="note" type="text"></label>
+            <button class="primary">Hinzufügen</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Abschlag</h2>
+        <ul id="list-installments" class="list"></ul>
+        <details><summary>Neuen Abschlag anlegen</summary>
+          <form id="f-installments" class="grid">
+            <label>Gültig ab<input name="valid_from" type="date" required></label>
+            <label>Betrag brutto (€/Monat)<input name="amount" type="text" inputmode="decimal" required></label>
+            <label>Fällig am (Tag im Monat)<input name="due_day" type="number" min="1" max="31" value="1" required></label>
+            <button class="primary">Hinzufügen</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Daten</h2>
+        <p class="small muted">Export als JSON-Datei (ohne Fotos). Import ergänzt vorhandene Daten
+          oder ersetzt sie vollständig.</p>
+        <a class="button" href="api/export">Exportieren</a>
+        <form id="f-import" class="grid">
+          <input name="file" type="file" accept="application/json,.json" required>
+          <label class="inline"><input name="replace" type="checkbox"> Vorhandene Daten ersetzen</label>
+          <button>Importieren</button>
+        </form>
+        <p id="version" class="small muted"></p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <a href="#home" data-view="home"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Übersicht</a>
+    <a href="#read" data-view="read" class="tab-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Ablesen</a>
+    <a href="#history" data-view="history"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg>Verlauf</a>
+    <a href="#settings" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Einstellungen</a>
+  </nav>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <div id="tooltip" class="tooltip hidden" role="tooltip"></div>
+  <script src="app.js"></script>
+</body>
+</html>

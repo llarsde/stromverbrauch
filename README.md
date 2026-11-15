@@ -10,7 +10,7 @@ Kleine selbst gehostete Web-App, mit der du deinen Stromzähler ablesen und dein
 
 Die Ablesungen prüft die App auf Plausibilität (Tippfehler, rückwärts laufender Zähler). Zu jeder Ablesung kannst du ein Foto als Beleg speichern. Schätzungen des Versorgers dienen nur als Anfangsstand der Abrechnung und fließen nicht in die Prognose ein.
 
-> **Stufe 1** von 4. Danach folgen: HA-Integration (MQTT-Sensoren, Ablese-Erinnerung), ein saisonales Modell (Warmwasser/Durchlauferhitzer, Kaltwassertemperatur, Grundlast) und Extras (Foto-Erkennung, Tarifvergleich).
+> **Stufe 2** von 4: Erfassung und Abrechnung (1) sowie die Anbindung an Home Assistant (2) sind fertig. Als Nächstes kommen ein saisonales Modell (Warmwasser/Durchlauferhitzer, Kaltwassertemperatur, Grundlast) und Extras (Foto-Erkennung, Tarifvergleich).
 
 ## Installation auf dem OMV (Docker Compose)
 
@@ -51,6 +51,81 @@ Ob die HA-App das Gerätezertifikat auch für diese eingebettete Seite mitschick
 
 Kurzbefehle → neuer Kurzbefehl → Aktion **URL öffnen**: `https://strom.deine-domain.de/#read`. Den Kurzbefehl kannst du auf den Home-Bildschirm legen oder per „Hey Siri, Strom ablesen“ starten.
 
+## Home Assistant (Stufe 2)
+
+Die App arbeitet mit Home Assistant in beide Richtungen:
+
+- **HA → App:** Die App liest alle 5 Minuten die Sensoren, die du unter *Einstellungen → Home Assistant* verknüpfst. Das sind Messsteckdosen (Energie in kWh und optional Leistung in W), das Wetter oder ein Außentemperatursensor und später auch die Armatur- und Badsensoren. Beim Verknüpfen übernimmt sie den Verlauf der letzten 30 Tage aus HA. In der Übersicht siehst du dann, welchen Anteil jede Steckdose am Gesamtverbrauch hat.
+- **App → HA:** Per MQTT-Discovery legt die App in HA automatisch das Gerät **Stromverbrauch** mit diesen Sensoren an:
+
+| Entität | Inhalt |
+|---|---|
+| `sensor.strom_zaehlerstand` | letzte Ablesung (kWh), geeignet für das **Energie-Dashboard** |
+| `sensor.strom_zaehlerstand_geschaetzt` | hochgerechneter aktueller Zählerstand |
+| `sensor.strom_verbrauch_pro_tag` / `sensor.strom_kosten_pro_tag` | aktueller Verbrauch und Kosten pro Tag |
+| `sensor.strom_abweichung` | Abweichung zur Vorperiode in % |
+| `sensor.strom_prognose_monat_kwh` / `_eur`, `sensor.strom_prognose_jahr_kwh` | Hochrechnungen |
+| `sensor.strom_prognose_abrechnung_kwh` / `_eur` | Prognose für den Abrechnungszeitraum |
+| `sensor.strom_saldo` | Guthaben (+) bzw. Nachzahlung (−) |
+| `sensor.strom_empfohlener_abschlag`, `sensor.strom_break_even` | Abschlagsempfehlung, Verbrauchsgrenze ohne Nachzahlung |
+| `sensor.strom_letzte_ablesung`, `sensor.strom_tage_seit_ablesung` | für die Ablese-Erinnerung |
+
+### Einrichtung
+
+1. **In HA einen Benutzer anlegen** (z. B. `stromverbrauch`, „Nur lokal anmelden“). Das Mosquitto-Add-on akzeptiert HA-Benutzer automatisch.
+2. **Token erstellen:** Profil → Sicherheit → *Langlebige Zugangstoken*.
+3. **In OMV** unter Compose → Dateien → *stromverbrauch* im Feld **Umgebung** (`.env`) eintragen (Vorlage: [`.env.example`](.env.example)):
+   ```
+   HA_TOKEN=…
+   MQTT_HOST=192.168.x.x
+   MQTT_PASSWORD=…
+   ```
+   Die `docker-compose.yml` greift über `${…}` darauf zu. Die Zugangsdaten landen so nicht im Repository.
+4. Container neu starten. Unter *Einstellungen → Home Assistant* sollten beide Punkte grün sein. Danach die Sensoren verknüpfen.
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `HA_URL` | – | Adresse von Home Assistant, z. B. `https://ha.example.org` |
+| `HA_TOKEN` | – | langlebiger Zugangstoken |
+| `HA_VERIFY_SSL` | `true` | Zertifikat prüfen |
+| `HA_BACKFILL_DAYS` | `30` | wie viele Tage Verlauf beim Verknüpfen übernommen werden |
+| `MQTT_HOST` / `MQTT_PORT` | – / `1883` | Mosquitto |
+| `MQTT_USER` / `MQTT_PASSWORD` | – | HA-Benutzer für MQTT |
+| `MQTT_TOPIC` | `stromverbrauch` | Basis-Topic der App |
+| `MQTT_DISCOVERY_PREFIX` | `homeassistant` | Discovery-Präfix von HA |
+| `POLL_SECONDS` | `300` | Abfrage- und Sendeintervall |
+
+> **DNS-Hinweis:** `HA_URL=https://ha.example.org` funktioniert nur, wenn der OMV (und damit der Container) über AdGuard auflöst und so die **interne** Adresse bekommt. Sonst geht die Anfrage über Cloudflare und wird vom Gerätezertifikat geblockt. In dem Fall `HA_URL=http://<HA-IP>:8123` verwenden.
+
+### Ablese-Erinnerung als Automation
+
+Diese Automation in HA anlegen (Einstellungen → Automationen → ⋮ → *In YAML bearbeiten*) und die beiden `notify`-Dienste an die Namen deiner Handys anpassen:
+
+```yaml
+alias: Strom ablesen – Erinnerung
+triggers:
+  - trigger: time
+    at: "19:00:00"
+conditions:
+  - condition: numeric_state
+    entity_id: sensor.strom_tage_seit_ablesung
+    above: 0.9        # tägliche Phase – später z. B. 6.9 für wöchentlich
+actions:
+  - action: notify.mobile_app_iphone          # anpassen
+    data: &nachricht
+      title: Strom ablesen
+      message: >-
+        Letzte Ablesung vor {{ states('sensor.strom_tage_seit_ablesung') | float(0) | round(0) | int }} Tag(en).
+      data:
+        url: https://strom.example.org/#read          # iOS
+        clickAction: https://strom.example.org/#read  # Android
+  - action: notify.mobile_app_android         # anpassen
+    data: *nachricht
+mode: single
+```
+
+Durch Tippen auf die Mitteilung öffnet sich direkt die Ablese-Seite. Die URL passt du an deinen Cloudflare-Hostnamen an.
+
 ## Daten & Backup
 
 Alles liegt im gemounteten Ordner: `strom.db` (SQLite) und `photos/`. Diesen Ordner nimmst du in dein OMV-Backup auf. Zusätzlich kannst du die Daten in der App als JSON exportieren (ohne Fotos).
@@ -66,7 +141,7 @@ Alles liegt im gemounteten Ordner: `strom.db` (SQLite) und `photos/`. Diesen Ord
 ## Entwicklung
 
 ```bash
-pip install -r requirements.txt pytest httpx
+pip install -r requirements.txt pytest
 DATA_DIR=./data uvicorn app.main:app --reload --port 8080
 pytest
 ```

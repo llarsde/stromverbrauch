@@ -13,7 +13,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 async function api(path, opts = {}) {
   const res = await fetch(`api/${path}`, opts);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok && res.status !== 409) throw new Error(body.detail || `Fehler ${res.status}`);
+  if (!res.ok && res.status !== 409) {
+    const d = body.detail;
+    throw new Error(Array.isArray(d) ? "Bitte Eingaben prüfen (Entity-ID z. B. sensor.name)" : d || `Fehler ${res.status}`);
+  }
   return { status: res.status, body };
 }
 
@@ -103,7 +106,33 @@ async function loadHome() {
   $("#t-year").textContent = kwh(s.year.kwh);
   $("#t-year-sub").textContent = `beim aktuellen Verbrauch${s.year.eur != null ? ` · ${eur(s.year.eur)}` : ""}`;
 
+  renderConsumers(s);
   drawChart(s.intervals, p ? p.break_even_rate : null);
+}
+
+function renderConsumers(s) {
+  const card = $("#consumers-card");
+  const c = s.consumers;
+  card.classList.toggle("hidden", !c && !s.weather);
+  const rows = [];
+  if (c) {
+    for (const i of c.items) {
+      const val = i.per_day == null ? "noch keine Daten"
+        : `${nf(2).format(i.per_day)} kWh/Tag${i.share != null ? ` · ${nf(0).format(i.share)} %` : ""}`;
+      const power = i.power != null ? `<div class="muted small">jetzt ${nf(0).format(i.power)} W</div>` : "";
+      rows.push(`<li><div class="row"><span class="name">${esc(i.name)}</span><span class="val">${val}</span></div>
+        <div class="share-track"><div class="share-bar" style="width:${Math.min(100, i.share || 0)}%"></div></div>${power}</li>`);
+    }
+    if (c.rest) {
+      rows.push(`<li><div class="row"><span class="name">Nicht gemessen</span><span class="val">${nf(2).format(c.rest.per_day)} kWh/Tag · ${nf(0).format(c.rest.share)} %</span></div>
+        <div class="share-track"><div class="share-bar rest" style="width:${Math.min(100, c.rest.share)}%"></div></div>
+        <div class="muted small">Durchlauferhitzer, Herd, Kühlschrank, Licht …</div></li>`);
+    }
+  }
+  $("#consumers").innerHTML = rows.join("");
+  const w = s.weather;
+  $("#weather-line").textContent = w
+    ? `${w.name}: jetzt ${nf(1).format(w.now)} °C${w.avg_7d != null ? ` · Ø 7 Tage ${nf(1).format(w.avg_7d)} °C` : ""}` : "";
 }
 
 // ------------------------------------------------------------ Diagramm
@@ -293,7 +322,60 @@ async function loadSettings() {
     `<div class="main">${eur(i.amount, 2)} / Monat</div><div class="sub">ab ${date(i.valid_from)} · fällig am ${i.due_day}.</div>`, "installments");
   const { body: h } = await api("health");
   $("#version").textContent = `Version ${h.version}`;
+  loadHA();
 }
+
+let HA_ROLES = {};
+async function loadHA() {
+  const { body: st } = await api("ha/status");
+  HA_ROLES = st.roles;
+  const sel = $("#ha-role");
+  if (!sel.options.length) {
+    sel.innerHTML = Object.entries(st.roles).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+    sel.addEventListener("change", updateHAForm);
+    updateHAForm();
+  }
+  const line = (ok, label, text) => `<div><span class="dot ${ok === null ? "off" : ok ? "ok" : "err"}"></span><span><strong>${label}:</strong> ${esc(text)}</span></div>`;
+  const haText = !st.ha.configured ? "nicht eingerichtet (HA_URL / HA_TOKEN fehlen)"
+    : st.ha.ok === undefined ? "noch nicht abgefragt"
+    : st.ha.ok ? `verbunden · ${st.ha.message === "ok" ? "alle Sensoren erreichbar" : st.ha.message} · ${dateTime(st.ha.at)}`
+    : `Fehler: ${st.ha.message}`;
+  const mqttText = !st.mqtt.configured ? "nicht eingerichtet (MQTT_HOST fehlt)"
+    : st.mqtt.connected ? `verbunden${st.mqtt.last_publish ? ` · zuletzt gesendet ${dateTime(st.mqtt.last_publish)}` : ""}`
+    : `nicht verbunden${st.mqtt.error ? ` · ${st.mqtt.error}` : ""}`;
+  $("#ha-status").innerHTML = line(st.ha.configured ? st.ha.ok ?? null : null, "Home Assistant", haText)
+    + line(st.mqtt.configured ? st.mqtt.connected : null, "MQTT", mqttText);
+
+  const { body: ents } = await api("ha/entities");
+  $("#list-ha").innerHTML = ents.length ? ents.map((e) => {
+    const unit = e.role === "verbraucher" ? " kWh" : e.role === "bad_feuchte" ? " %" : " °C";
+    const last = e.last ? `${nf(e.role === "verbraucher" ? 2 : 1).format(e.last.value)}${unit} · ${dateTime(e.last.ts)}` : "noch kein Wert";
+    const power = e.power != null ? ` · ${nf(0).format(e.power)} W` : "";
+    return `<li><div><div class="main">${esc(e.name)} <span class="badge">${esc(HA_ROLES[e.role] || e.role)}</span></div>
+      <div class="sub">${esc(e.entity_id)}${e.power_entity_id ? `<br>${esc(e.power_entity_id)}` : ""}<br>${last}${power} · ${e.samples} Messwerte</div></div>
+      <button class="del" data-del="ha_entities/${e.id}">Löschen</button></li>`;
+  }).join("") : `<li class="muted">Noch keine Sensoren verknüpft.</li>`;
+}
+
+function updateHAForm() {
+  const role = $("#ha-role").value;
+  $("#ha-power-wrap").classList.toggle("hidden", role !== "verbraucher");
+  $("#ha-entity-label").textContent = role === "verbraucher" ? "Entity-ID Energiezähler (kWh)"
+    : role === "wetter" ? "Entity-ID Wetter (weather.…)" : "Entity-ID";
+}
+
+$("#f-ha").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const data = Object.fromEntries(new FormData(ev.target));
+  for (const k in data) { data[k] = data[k].trim(); if (!data[k]) delete data[k]; }
+  if (data.role !== "verbraucher") delete data.power_entity_id;
+  try {
+    const { body } = await api("ha/entities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    toast(body.warning || "Verknüpft – Verlauf wird übernommen");
+    ev.target.reset(); updateHAForm();
+    setTimeout(loadHA, 1500);
+  } catch (e) { toast(e.message); }
+});
 
 for (const table of ["tariffs", "periods", "installments"]) {
   $(`#f-${table}`).addEventListener("submit", async (ev) => {

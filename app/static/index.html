@@ -53,6 +53,12 @@
         <div class="tile"><div class="label">12 Monate</div><div class="num" id="t-year"></div><div class="muted small" id="t-year-sub"></div></div>
       </div>
 
+      <div id="consumers-card" class="card hidden">
+        <div class="label">Gemessene Verbraucher · letzte 7 Tage</div>
+        <ul id="consumers" class="list consumers"></ul>
+        <div id="weather-line" class="muted small"></div>
+      </div>
+
       <div id="chart-card" class="card viz-root hidden">
         <div class="label">Verbrauch je Ableseintervall</div>
         <div class="muted small">kWh pro Tag · gestrichelt: Grenze ohne Nachzahlung</div>
@@ -135,6 +141,23 @@
             <label>Gültig ab<input name="valid_from" type="date" required></label>
             <label>Betrag brutto (€/Monat)<input name="amount" type="text" inputmode="decimal" required></label>
             <label>Fällig am (Tag im Monat)<input name="due_day" type="number" min="1" max="31" value="1" required></label>
+            <button class="primary">Hinzufügen</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Home Assistant</h2>
+        <div id="ha-status" class="status-lines small"></div>
+        <ul id="list-ha" class="list"></ul>
+        <details><summary>Sensor aus Home Assistant hinzufügen</summary>
+          <form id="f-ha" class="grid">
+            <label>Art<select name="role" id="ha-role"></select></label>
+            <label>Name<input name="name" type="text" placeholder="z. B. Waschmaschine" required></label>
+            <label><span id="ha-entity-label">Entity-ID Energiezähler (kWh)</span>
+              <input name="entity_id" type="text" placeholder="sensor.…" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+            <label id="ha-power-wrap">Entity-ID Leistung (W, optional)
+              <input name="power_entity_id" type="text" placeholder="sensor.…" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
             <button class="primary">Hinzufügen</button>
           </form>
         </details>

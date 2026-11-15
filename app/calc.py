@@ -333,3 +333,54 @@ def summarize(
             "recommended_installment": recommended,
         }
     return out
+
+
+# ---------------------------------------------------------------- Messwerte aus Home Assistant
+
+def counter_consumption(samples: list[tuple[datetime, float]], t0: datetime, t1: datetime) -> Optional[dict]:
+    """Verbrauch eines Energiezählers (kWh, fortlaufend) zwischen t0 und t1.
+    Rücksetzer des Zählers (Wert fällt) werden erkannt und überbrückt."""
+    pts = sorted(samples)
+    before = [p for p in pts if p[0] <= t0]
+    inside = [p for p in pts if t0 < p[0] <= t1]
+    if before:
+        start = before[-1]
+    elif inside:
+        start, inside = inside[0], inside[1:]
+    else:
+        return None
+    kwh, prev, last_ts = 0.0, start[1], start[0]
+    for ts, v in inside:
+        delta = v - prev
+        kwh += delta if delta >= 0 else v  # Rücksetzer: Zähler beginnt wieder bei 0
+        prev, last_ts = v, ts
+    covered_from = max(start[0], t0)
+    return {"kwh": kwh, "days": max(0.0, days_between(covered_from, min(last_ts, t1)))}
+
+
+def mean_value(samples: list[tuple[datetime, float]], t0: datetime, t1: datetime) -> Optional[float]:
+    vals = [v for ts, v in samples if t0 <= ts <= t1]
+    return sum(vals) / len(vals) if vals else None
+
+
+def consumer_stats(consumers: list[dict], meter_rate: Optional[float], now: datetime,
+                   days: float = 7) -> dict:
+    """Gemessene Verbraucher der letzten `days` Tage und ihr Anteil am Gesamtverbrauch.
+    consumers: [{"name", "samples": [(ts, kWh)], "power": W | None}]"""
+    t0 = now - timedelta(days=days)
+    items = []
+    for c in consumers:
+        res = counter_consumption(c["samples"], t0, now)
+        item = {"name": c["name"], "power": c.get("power"), "kwh": None, "days": None,
+                "per_day": None, "share": None}
+        if res and res["days"] > 0.04:  # mind. ~1 Stunde Daten
+            item.update(kwh=res["kwh"], days=res["days"], per_day=res["kwh"] / res["days"])
+            if meter_rate:
+                item["share"] = item["per_day"] / meter_rate * 100
+        items.append(item)
+    measured = sum(i["per_day"] for i in items if i["per_day"] is not None)
+    rest = None
+    if meter_rate:
+        rest = {"per_day": max(0.0, meter_rate - measured),
+                "share": max(0.0, 100 - measured / meter_rate * 100)}
+    return {"days": days, "items": items, "measured_per_day": measured, "rest": rest}

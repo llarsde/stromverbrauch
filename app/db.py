@@ -40,6 +40,27 @@ CREATE TABLE IF NOT EXISTS periods (
     note        TEXT
 );
 
+CREATE TABLE IF NOT EXISTS ha_entities (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    role            TEXT NOT NULL,         -- verbraucher | wetter | aussentemperatur | kaltwasser | warmwasser | bad_feuchte
+    name            TEXT NOT NULL,
+    entity_id       TEXT NOT NULL,         -- bei Verbrauchern: Energiezähler in kWh
+    power_entity_id TEXT                   -- optional: aktuelle Leistung in W
+);
+
+-- Messwerte aus Home Assistant (Energiezähler, Temperaturen …)
+CREATE TABLE IF NOT EXISTS samples (
+    entity_id TEXT NOT NULL,
+    ts        TEXT NOT NULL,
+    value     REAL NOT NULL,
+    PRIMARY KEY (entity_id, ts)
+);
+
+CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS installments (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     valid_from TEXT NOT NULL,              -- ab welcher Fälligkeit dieser Betrag gilt
@@ -84,6 +105,7 @@ TABLES = {
     "tariffs": ["valid_from", "name", "energy_ct", "tax_ct", "base_eur_year", "vat_pct"],
     "periods": ["start", "end", "start_value", "note"],
     "installments": ["valid_from", "amount", "due_day"],
+    "ha_entities": ["role", "name", "entity_id", "power_entity_id"],
 }
 
 
@@ -117,3 +139,23 @@ def import_all(data: dict, replace: bool = False) -> dict:
                 )
             counts[table] = len(items)
     return counts
+
+
+def add_samples(points: list[tuple[str, str, float]]) -> int:
+    """(entity_id, ts, value) – doppelte Zeitpunkte werden ignoriert."""
+    if not points:
+        return 0
+    with connect() as con:
+        cur = con.executemany(
+            "INSERT OR IGNORE INTO samples (entity_id, ts, value) VALUES (?, ?, ?)", points)
+        return cur.rowcount
+
+
+def kv_set(key: str, value: str) -> None:
+    execute("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value))
+
+
+def kv_get(key: str, default=None):
+    r = rows("SELECT value FROM kv WHERE key = ?", (key,))
+    return r[0]["value"] if r else default

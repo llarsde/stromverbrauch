@@ -1,10 +1,13 @@
 """Stromverbrauch – Web-API und Auslieferung der Web-App."""
 from __future__ import annotations
 
+import logging
 import os
+import threading
 import uuid
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+import json
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -14,16 +17,67 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calc, db
+from . import calc, db, ha, mqtt
 
 TZ = ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))
 STATIC = Path(__file__).parent / "static"
 VERSION = os.environ.get("APP_VERSION", "dev")
 
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+log = logging.getLogger("stromverbrauch")
+POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "300"))
+
+publisher: Optional[mqtt.Publisher] = None
+_stop = threading.Event()
+_wake = threading.Event()
+
+
+def publish_now() -> None:
+    """Aktuelle Werte sofort an MQTT senden (z. B. nach einer neuen Ablesung)."""
+    if publisher:
+        try:
+            publisher.publish_state(mqtt.state_from_summary(build_summary(), datetime.now(TZ)))
+        except Exception:  # noqa: BLE001 – Fehler beim Senden dürfen die API nie stören
+            log.exception("MQTT-Senden fehlgeschlagen")
+
+
+def worker() -> None:
+    """Hintergrund: HA-Werte abfragen und Ergebnisse an MQTT senden."""
+    client = ha.HAClient() if ha.configured() else None
+    while not _stop.is_set():
+        if client:
+            try:
+                res = ha.poll(client)
+                msg = "ok" if not res["missing"] else f"nicht verfügbar: {', '.join(res['missing'])}"
+                db.kv_set("ha_status", json.dumps({"ok": True, "message": msg,
+                                                    "at": datetime.now(TZ).isoformat(timespec="seconds")}))
+            except Exception as e:  # noqa: BLE001
+                log.warning("Home Assistant nicht erreichbar: %s", e)
+                db.kv_set("ha_status", json.dumps({"ok": False, "message": str(e)[:300],
+                                                    "at": datetime.now(TZ).isoformat(timespec="seconds")}))
+        publish_now()
+        _wake.wait(POLL_SECONDS)
+        _wake.clear()
+
+
 @asynccontextmanager
 async def lifespan(_app):
+    global publisher
     db.init()
+    if mqtt.configured():
+        publisher = mqtt.Publisher(VERSION)
+        publisher.start()
+    thread = None
+    if os.environ.get("DISABLE_WORKER") != "1" and (ha.configured() or publisher):
+        thread = threading.Thread(target=worker, name="worker", daemon=True)
+        thread.start()
     yield
+    _stop.set()
+    _wake.set()
+    if publisher:
+        publisher.stop()
 
 
 app = FastAPI(title="Stromverbrauch", version=VERSION, lifespan=lifespan)
@@ -62,10 +116,36 @@ def load_installments() -> list[calc.Installment]:
 
 # ---------------------------------------------------------------- Übersicht
 
+def load_samples(entity_id: str, since: datetime) -> list[tuple[datetime, float]]:
+    # etwas Vorlauf, damit der Startwert vor dem Zeitfenster bekannt ist
+    rows = db.rows("SELECT ts, value FROM samples WHERE entity_id = ? AND ts >= ? ORDER BY ts",
+                   (entity_id, (since - timedelta(days=2)).isoformat(timespec="seconds")))
+    return [(datetime.fromisoformat(r["ts"]), r["value"]) for r in rows]
+
+
+def build_summary() -> dict:
+    now = datetime.now(TZ)
+    s = calc.summarize(load_readings(), load_tariffs(), load_periods(), load_installments(), now)
+    ents = db.rows("SELECT * FROM ha_entities ORDER BY id")
+    since = now - timedelta(days=7)
+    consumers = [{"name": e["name"], "samples": load_samples(e["entity_id"], since),
+                  "power": ha.current_power.get(e["power_entity_id"]) if e["power_entity_id"] else None}
+                 for e in ents if e["role"] == "verbraucher"]
+    if consumers:
+        s["consumers"] = calc.consumer_stats(consumers, (s.get("rate") or {}).get("recent"), now)
+    temp = next((e for e in ents if e["role"] == "aussentemperatur"), None) or \
+        next((e for e in ents if e["role"] == "wetter"), None)
+    if temp:
+        smp = load_samples(temp["entity_id"], since)
+        if smp:
+            s["weather"] = {"name": temp["name"], "now": smp[-1][1],
+                            "avg_7d": calc.mean_value(smp, since, now)}
+    return s
+
+
 @app.get("/api/summary")
 def summary():
-    return calc.summarize(load_readings(), load_tariffs(), load_periods(), load_installments(),
-                          datetime.now(TZ))
+    return build_summary()
 
 
 @app.get("/api/health")
@@ -107,6 +187,7 @@ async def add_reading(
 
     row_id = db.insert("readings", {"ts": when.isoformat(timespec="seconds"), "value": value,
                                     "kind": kind, "note": note, "photo": photo_name})
+    publish_now()
     return {"id": row_id, "warnings": warnings}
 
 
@@ -116,6 +197,7 @@ def delete_reading(row_id: int):
     if r and r[0]["photo"]:
         (db.PHOTO_DIR / r[0]["photo"]).unlink(missing_ok=True)
     db.delete("readings", row_id)
+    publish_now()
     return {"ok": True}
 
 
@@ -184,10 +266,72 @@ def add_installment(i: InstallmentIn):
 
 @app.delete("/api/{table}/{row_id}")
 def delete_row(table: str, row_id: int):
-    if table not in ("tariffs", "periods", "installments"):
+    if table not in ("tariffs", "periods", "installments", "ha_entities"):
         raise HTTPException(404)
+    if table == "ha_entities":
+        r = db.rows("SELECT entity_id FROM ha_entities WHERE id = ?", (row_id,))
+        if r:
+            db.execute("DELETE FROM samples WHERE entity_id = ?", (r[0]["entity_id"],))
+            db.execute("DELETE FROM kv WHERE key = ?", (f"backfilled:{r[0]['entity_id']}",))
     db.delete(table, row_id)
+    publish_now()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- Home Assistant
+
+class HAEntityIn(BaseModel):
+    role: str
+    name: str = Field(min_length=1)
+    entity_id: str = Field(pattern=r"^[a-z_]+\.[a-z0-9_]+$")
+    power_entity_id: Optional[str] = Field(default=None, pattern=r"^[a-z_]+\.[a-z0-9_]+$")
+
+
+@app.get("/api/ha/status")
+def ha_status():
+    st = json.loads(db.kv_get("ha_status") or "null")
+    return {
+        "roles": ha.ROLES,
+        "ha": {"configured": ha.configured(), "url": os.environ.get("HA_URL"), **(st or {})},
+        "mqtt": {"configured": mqtt.configured(),
+                 "connected": bool(publisher and publisher.connected),
+                 "error": publisher.last_error if publisher else None,
+                 "last_publish": publisher.last_publish if publisher else None},
+    }
+
+
+@app.get("/api/ha/entities")
+def ha_entities():
+    ents = db.rows("SELECT * FROM ha_entities ORDER BY role, id")
+    for e in ents:
+        last = db.rows("SELECT ts, value FROM samples WHERE entity_id = ? ORDER BY ts DESC LIMIT 1",
+                       (e["entity_id"],))
+        e["last"] = last[0] if last else None
+        e["samples"] = db.rows("SELECT COUNT(*) AS n FROM samples WHERE entity_id = ?",
+                               (e["entity_id"],))[0]["n"]
+        e["power"] = ha.current_power.get(e["power_entity_id"]) if e["power_entity_id"] else None
+    return ents
+
+
+@app.post("/api/ha/entities")
+def add_ha_entity(e: HAEntityIn):
+    if e.role not in ha.ROLES:
+        raise HTTPException(400, "Unbekannte Rolle")
+    warning = None
+    if ha.configured():
+        try:
+            client = ha.HAClient()
+            for eid, role in ((e.entity_id, e.role), (e.power_entity_id, "leistung")):
+                if eid and ha.value_of(client.state(eid), role) is None:
+                    raise HTTPException(400, f"{eid} gibt es in Home Assistant nicht oder hat keinen Zahlenwert")
+        except HTTPException:
+            raise
+        except Exception as ex:  # noqa: BLE001
+            warning = f"Home Assistant gerade nicht erreichbar ({ex}). Gespeichert, wird später geprüft."
+    row_id = db.insert("ha_entities", e.model_dump())
+    _wake.set()  # sofort abfragen und Verlauf übernehmen
+    return {"id": row_id, "warning": warning}
+
 
 
 # ---------------------------------------------------------------- Import / Export

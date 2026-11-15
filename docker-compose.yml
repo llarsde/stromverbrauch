@@ -7,6 +7,14 @@ services:
       - "8765:8080"          # links: Port auf dem OMV
     environment:
       - TZ=Europe/Berlin
+      # --- Home Assistant (Stufe 2, optional) ---
+      - HA_URL=https://ha.example.org
+      - HA_TOKEN=${HA_TOKEN}
+      # --- MQTT (Mosquitto-Add-on in HA OS) ---
+      - MQTT_HOST=${MQTT_HOST}
+      - MQTT_PORT=1883
+      - MQTT_USER=stromverbrauch
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
     volumes:
       # Datenbank und Fotos – diesen Ordner ins Backup aufnehmen
       - /srv/dev-disk-by-uuid-XXXX/appdata/stromverbrauch:/data

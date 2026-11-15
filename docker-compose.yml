@@ -8,7 +8,7 @@ services:
     environment:
       - TZ=Europe/Berlin
       # --- Home Assistant (Stufe 2, optional) ---
-      - HA_URL=https://ha.example.org
+      - HA_URL=${HA_URL}
       - HA_TOKEN=${HA_TOKEN}
       # --- MQTT (Mosquitto-Add-on in HA OS) ---
       - MQTT_HOST=${MQTT_HOST}

@@ -76,16 +76,17 @@ Die App arbeitet mit Home Assistant in beide Richtungen:
 2. **Token erstellen:** Profil → Sicherheit → *Langlebige Zugangstoken*.
 3. **In OMV** unter Compose → Dateien → *stromverbrauch* im Feld **Umgebung** (`.env`) eintragen (Vorlage: [`.env.example`](.env.example)):
    ```
+   HA_URL=https://ha.example.org
    HA_TOKEN=…
    MQTT_HOST=192.168.x.x
    MQTT_PASSWORD=…
    ```
-   Die `docker-compose.yml` greift über `${…}` darauf zu. Die Zugangsdaten landen so nicht im Repository.
+   Die `docker-compose.yml` greift über `${…}` darauf zu. Zugangsdaten und Adressen landen so nicht im Repository.
 4. Container neu starten. Unter *Einstellungen → Home Assistant* sollten beide Punkte grün sein. Danach die Sensoren verknüpfen.
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `HA_URL` | – | Adresse von Home Assistant, z. B. `https://ha.example.org` |
+| `HA_URL` | – | Adresse von Home Assistant, z. B. `https://ha.example.org` oder `http://192.168.x.x:8123` |
 | `HA_TOKEN` | – | langlebiger Zugangstoken |
 | `HA_VERIFY_SSL` | `true` | Zertifikat prüfen |
 | `HA_BACKFILL_DAYS` | `30` | wie viele Tage Verlauf beim Verknüpfen übernommen werden |
@@ -95,7 +96,7 @@ Die App arbeitet mit Home Assistant in beide Richtungen:
 | `MQTT_DISCOVERY_PREFIX` | `homeassistant` | Discovery-Präfix von HA |
 | `POLL_SECONDS` | `300` | Abfrage- und Sendeintervall |
 
-> **DNS-Hinweis:** `HA_URL=https://ha.example.org` funktioniert nur, wenn der OMV (und damit der Container) über AdGuard auflöst und so die **interne** Adresse bekommt. Sonst geht die Anfrage über Cloudflare und wird vom Gerätezertifikat geblockt. In dem Fall `HA_URL=http://<HA-IP>:8123` verwenden.
+> **DNS-Hinweis:** Eine Domain in `HA_URL` funktioniert nur, wenn der OMV (und damit der Container) über AdGuard auflöst und so die **interne** Adresse bekommt. Sonst geht die Anfrage über Cloudflare und wird vom Gerätezertifikat geblockt. In dem Fall `HA_URL=http://<HA-IP>:8123` verwenden.
 
 ### Ablese-Erinnerung als Automation
 

@@ -99,3 +99,13 @@ def test_mqtt_werte():
     assert "abweichung" not in out
     keys = {k for k, *_ in mqtt.SENSORS}
     assert set(out) <= keys
+
+
+def test_fehlertexte():
+    req = httpx.Request("GET", "https://ha.example.org/api/")
+    cf = httpx.HTTPStatusError("x", request=req, response=httpx.Response(403, headers={"server": "cloudflare"}, request=req))
+    assert "Cloudflare" in ha.explain_error(cf)
+    ban = httpx.HTTPStatusError("x", request=req, response=httpx.Response(403, request=req))
+    assert "gesperrt" in ha.explain_error(ban)
+    tok = httpx.HTTPStatusError("x", request=req, response=httpx.Response(401, request=req))
+    assert "Token" in ha.explain_error(tok)

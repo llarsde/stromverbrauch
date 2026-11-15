@@ -119,3 +119,22 @@ def poll(client: HAClient) -> dict:
                 current_power[ent["power_entity_id"]] = p
     db.add_samples(points)
     return {"stored": len(points), "missing": missing}
+
+
+def explain_error(e: Exception) -> str:
+    """Verständliche Fehlermeldung für die Statusanzeige."""
+    if isinstance(e, httpx.HTTPStatusError):
+        code = e.response.status_code
+        server = e.response.headers.get("server", "").lower()
+        if code == 401:
+            return "401: Token ungültig oder abgelaufen (HA_TOKEN prüfen)."
+        if code == 403 and ("cloudflare" in server or "cf-ray" in e.response.headers):
+            return ("403 von Cloudflare: Die Anfrage geht über das Internet statt direkt ins Heimnetz "
+                    "und wird vom Gerätezertifikat geblockt. HA_URL auf http://<HA-IP>:8123 setzen.")
+        if code == 403:
+            return ("403: Home Assistant verweigert den Zugriff – vermutlich wurde die IP des Servers "
+                    "nach Fehlversuchen gesperrt (ip_bans.yaml in HA prüfen).")
+        return f"HTTP {code} von {e.request.url.host}"
+    if isinstance(e, httpx.ConnectError):
+        return f"Keine Verbindung zu {os.environ.get('HA_URL', '?')} ({e})"[:300]
+    return str(e)[:300]

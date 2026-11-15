@@ -55,7 +55,7 @@ def worker() -> None:
                                                     "at": datetime.now(TZ).isoformat(timespec="seconds")}))
             except Exception as e:  # noqa: BLE001
                 log.warning("Home Assistant nicht erreichbar: %s", e)
-                db.kv_set("ha_status", json.dumps({"ok": False, "message": str(e)[:300],
+                db.kv_set("ha_status", json.dumps({"ok": False, "message": ha.explain_error(e),
                                                     "at": datetime.now(TZ).isoformat(timespec="seconds")}))
         publish_now()
         _wake.wait(POLL_SECONDS)

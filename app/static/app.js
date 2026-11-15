@@ -106,8 +106,19 @@ async function loadHome() {
   $("#t-year").textContent = kwh(s.year.kwh);
   $("#t-year-sub").textContent = `beim aktuellen Verbrauch${s.year.eur != null ? ` · ${eur(s.year.eur)}` : ""}`;
 
+  renderBaseload(s);
   renderConsumers(s);
   drawChart(s.intervals, p ? p.break_even_rate : null);
+}
+
+function renderBaseload(s) {
+  const b = s.baseload;
+  $("#baseload-card").classList.toggle("hidden", !b);
+  if (!b) return;
+  $("#bl-w").textContent = `${nf(0).format(b.mean_w)} W`;
+  $("#bl-day").textContent = `≈ ${nf(1).format(b.kwh_day)} kWh/Tag${b.share != null ? ` · ${nf(0).format(b.share)} % des Verbrauchs` : ""}`;
+  const range = b.count > 1 ? `${b.count} Messungen, ${nf(0).format(b.min_w)}–${nf(0).format(b.max_w)} W` : "1 Messung – für einen stabilen Wert mehrmals messen";
+  $("#bl-sub").textContent = `${range}${b.eur_year != null ? ` · ≈ ${eur(b.eur_year)} pro Jahr` : ""}`;
 }
 
 function renderConsumers(s) {
@@ -247,6 +258,13 @@ $("#read-form").addEventListener("submit", async (ev) => {
   fd.append("ts", new Date($("#r-ts").value).toISOString());
   fd.append("kind", $("#r-kind").value);
   if ($("#r-note").value) fd.append("note", $("#r-note").value);
+  const pw = $("#r-power").value.trim();
+  if (pw) {
+    const w = parseNum(pw);
+    if (!Number.isFinite(w) || w < 0) { toast("Leistung bitte als Zahl in Watt eingeben"); return; }
+    fd.append("power_w", w);
+    if ($("#r-baseload").checked) fd.append("baseload", "true");
+  } else if ($("#r-baseload").checked) { toast("Für die Grundlast bitte die Leistung in W eintragen"); return; }
   if ($("#r-photo").files[0]) fd.append("photo", $("#r-photo").files[0]);
   if (form.dataset.force) fd.append("force", "true");
   $("#r-submit").disabled = true;
@@ -294,6 +312,7 @@ async function loadHistory() {
       const days = (new Date(r.ts) - new Date(prev.ts)) / 864e5;
       if (days > 0) sub += ` · +${nf(0).format(r.value - prev.value)} kWh · ${nf(1).format((r.value - prev.value) / days)} kWh/Tag`;
     }
+    if (r.power_w != null) sub += ` · ${nf(0).format(r.power_w)} W${r.baseload ? " (Grundlast)" : ""}`;
     if (r.note) sub += ` · ${esc(r.note)}`;
     const photo = r.photo ? ` · <a href="api/photos/${encodeURIComponent(r.photo)}" target="_blank">Foto</a>` : "";
     const badge = KIND[r.kind] ? `<span class="badge">${KIND[r.kind]}</span>` : "";

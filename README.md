@@ -68,6 +68,7 @@ Die App arbeitet mit Home Assistant in beide Richtungen:
 | `sensor.strom_prognose_abrechnung_kwh` / `_eur` | Prognose für den Abrechnungszeitraum |
 | `sensor.strom_saldo` | Guthaben (+) bzw. Nachzahlung (−) |
 | `sensor.strom_empfohlener_abschlag`, `sensor.strom_break_even` | Abschlagsempfehlung, Verbrauchsgrenze ohne Nachzahlung |
+| `sensor.strom_grundlast` | gemessene Grundlast in W (Mittelwert) |
 | `sensor.strom_letzte_ablesung`, `sensor.strom_tage_seit_ablesung` | für die Ablese-Erinnerung |
 
 ### Einrichtung
@@ -130,6 +131,10 @@ Durch Tippen auf die Mitteilung öffnet sich direkt die Ablese-Seite. Die URL pa
 ## Daten & Backup
 
 Alles liegt im gemounteten Ordner: `strom.db` (SQLite) und `photos/`. Diesen Ordner nimmst du in dein OMV-Backup auf. Zusätzlich kannst du die Daten in der App als JSON exportieren (ohne Fotos).
+
+## Grundlast
+
+Zeigt dein Zähler die aktuelle Leistung an (bei modernen Messeinrichtungen nach Freischaltung per PIN), kannst du sie beim Ablesen mit eintragen. Hakst du zusätzlich **„Nur Grundlast aktiv“** an (Durchlauferhitzer, Herd und Waschmaschine sind also aus), wertet die App diese Messungen als Grundlast aus: Mittelwert in W, kWh pro Tag, Anteil am Verbrauch und Kosten pro Jahr. Miss mehrmals zu verschiedenen Zeiten, weil Kühlschrank und Gefrierfach takten.
 
 ## Wie gerechnet wird
 

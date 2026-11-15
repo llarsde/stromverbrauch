@@ -384,3 +384,17 @@ def consumer_stats(consumers: list[dict], meter_rate: Optional[float], now: date
         rest = {"per_day": max(0.0, meter_rate - measured),
                 "share": max(0.0, 100 - measured / meter_rate * 100)}
     return {"days": days, "items": items, "measured_per_day": measured, "rest": rest}
+
+
+
+def baseload_stats(values_w: list[float], meter_rate: Optional[float], price_kwh: Optional[float]) -> dict:
+    """Grundlast aus am Zähler abgelesenen Leistungswerten (nur große Verbraucher aus)."""
+    mean = sum(values_w) / len(values_w)
+    kwh_day = mean * 24 / 1000
+    out = {"count": len(values_w), "mean_w": mean, "min_w": min(values_w), "max_w": max(values_w),
+           "kwh_day": kwh_day, "kwh_year": kwh_day * 365, "share": None, "eur_year": None}
+    if meter_rate:
+        out["share"] = kwh_day / meter_rate * 100
+    if price_kwh:
+        out["eur_year"] = kwh_day * 365 * price_kwh
+    return out

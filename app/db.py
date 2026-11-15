@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS readings (
     kind    TEXT    NOT NULL DEFAULT 'ablesung'
             CHECK (kind IN ('ablesung', 'versorger', 'schaetzung')),
     note    TEXT,
-    photo   TEXT
+    photo   TEXT,
+    power_w REAL,                          -- am Zähler angezeigte Leistung (W), optional
+    baseload INTEGER NOT NULL DEFAULT 0    -- 1 = nur Grundlast aktiv
 );
 CREATE INDEX IF NOT EXISTS idx_readings_ts ON readings(ts);
 
@@ -75,6 +77,12 @@ def init() -> None:
     PHOTO_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as con:
         con.executescript(SCHEMA)
+        # Migrationen für bestehende Datenbanken
+        cols = {r[1] for r in con.execute("PRAGMA table_info(readings)")}
+        if "power_w" not in cols:
+            con.execute("ALTER TABLE readings ADD COLUMN power_w REAL")
+        if "baseload" not in cols:
+            con.execute("ALTER TABLE readings ADD COLUMN baseload INTEGER NOT NULL DEFAULT 0")
 
 
 @contextmanager
@@ -101,7 +109,7 @@ def execute(sql: str, params: tuple = ()) -> int:
 
 
 TABLES = {
-    "readings": ["ts", "value", "kind", "note", "photo"],
+    "readings": ["ts", "value", "kind", "note", "photo", "power_w", "baseload"],
     "tariffs": ["valid_from", "name", "energy_ct", "tax_ct", "base_eur_year", "vat_pct"],
     "periods": ["start", "end", "start_value", "note"],
     "installments": ["valid_from", "amount", "due_day"],

@@ -178,3 +178,5 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 8px; }
 .dot.ok { background: var(--good); }
 .dot.err { background: var(--critical); }
 .dot.off { background: var(--text-muted); }
+.num-lg { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+#bl-w { margin: 4px 0 2px; white-space: nowrap; }

@@ -101,3 +101,11 @@ def test_abweichung_ignoriert_kurze_intervalle():
     s = calc.summarize(rs, [TARIFF], [PERIOD], INST, dt(2026, 11, 15, 19, 0))
     # Vergleich ab 29.10. statt nur über die 6 Stunden seit Mittag
     assert s["deviation"]["last_rate"] == pytest.approx((7930 - 7755) / 17.25, rel=1e-3)
+
+
+def test_grundlast():
+    b = calc.baseload_stats([147, 120, 180], 9.6, 0.3887)
+    assert b["mean_w"] == pytest.approx(149)
+    assert b["kwh_day"] == pytest.approx(3.576)
+    assert b["share"] == pytest.approx(37.25)
+    assert b["eur_year"] == pytest.approx(3.576 * 365 * 0.3887)

@@ -53,6 +53,13 @@
         <div class="tile"><div class="label">12 Monate</div><div class="num" id="t-year"></div><div class="muted small" id="t-year-sub"></div></div>
       </div>
 
+      <div id="baseload-card" class="card hidden">
+        <div class="label">Grundlast (am Zähler gemessen)</div>
+        <div id="bl-w" class="num-lg"></div>
+        <div id="bl-day"></div>
+        <div id="bl-sub" class="muted small"></div>
+      </div>
+
       <div id="consumers-card" class="card hidden">
         <div class="label">Gemessene Verbraucher · letzte 7 Tage</div>
         <ul id="consumers" class="list consumers"></ul>
@@ -74,6 +81,10 @@
         <input id="r-value" name="value" type="text" inputmode="decimal" autocomplete="off" required
                placeholder="z. B. 7918" class="big-input">
         <div id="r-last" class="muted small"></div>
+
+        <label for="r-power">Aktuelle Leistung am Display (W, optional)</label>
+        <input id="r-power" name="power_w" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 147">
+        <label class="inline"><input id="r-baseload" type="checkbox"> Nur Grundlast aktiv (Durchlauferhitzer, Herd, Waschmaschine aus)</label>
 
         <label for="r-ts">Zeitpunkt</label>
         <input id="r-ts" name="ts" type="datetime-local" required>

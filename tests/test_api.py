@@ -43,6 +43,13 @@ def test_ablauf(client):
 
     s = client.get("/api/summary").json()
     assert s["period"]["installments_total"] == 1500
+
+    r = client.post("/api/readings", data={"value": "7931", "ts": "2026-11-16T23:00",
+                                           "power_w": "147", "baseload": "true"})
+    assert r.status_code == 200
+    s = client.get("/api/summary").json()
+    assert s["baseload"]["mean_w"] == 147 and s["baseload"]["count"] == 1
+    client.delete(f"/api/readings/{r.json()['id']}")
     assert client.get("/").status_code == 200
 
     exp = client.get("/api/export").json()

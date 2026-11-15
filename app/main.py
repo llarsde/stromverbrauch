@@ -133,6 +133,11 @@ def build_summary() -> dict:
                  for e in ents if e["role"] == "verbraucher"]
     if consumers:
         s["consumers"] = calc.consumer_stats(consumers, (s.get("rate") or {}).get("recent"), now)
+    bl = db.rows("SELECT ts, power_w FROM readings WHERE baseload = 1 AND power_w IS NOT NULL ORDER BY ts")
+    if bl:
+        s["baseload"] = calc.baseload_stats([b["power_w"] for b in bl], (s.get("rate") or {}).get("recent"),
+                                            (s.get("tariff") or {}).get("price_kwh"))
+        s["baseload"]["last_ts"] = bl[-1]["ts"]
     temp = next((e for e in ents if e["role"] == "aussentemperatur"), None) or \
         next((e for e in ents if e["role"] == "wetter"), None)
     if temp:
@@ -167,6 +172,8 @@ async def add_reading(
     kind: str = Form("ablesung"),
     note: Optional[str] = Form(None),
     force: bool = Form(False),
+    power_w: Optional[float] = Form(None, ge=0, le=50000),
+    baseload: bool = Form(False),
     photo: Optional[UploadFile] = File(None),
 ):
     if kind not in ("ablesung", "versorger", "schaetzung"):
@@ -186,7 +193,8 @@ async def add_reading(
         (db.PHOTO_DIR / photo_name).write_bytes(await photo.read())
 
     row_id = db.insert("readings", {"ts": when.isoformat(timespec="seconds"), "value": value,
-                                    "kind": kind, "note": note, "photo": photo_name})
+                                    "kind": kind, "note": note, "photo": photo_name,
+                                    "power_w": power_w, "baseload": int(baseload and power_w is not None)})
     publish_now()
     return {"id": row_id, "warnings": warnings}
 

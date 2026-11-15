@@ -31,6 +31,7 @@ SENSORS = [
     ("saldo", "Prognose Guthaben (+) / Nachzahlung (−)", "EUR", "monetary", None, "mdi:scale-balance", 0),
     ("empfohlener_abschlag", "Empfohlener Abschlag", "EUR", "monetary", None, "mdi:cash-sync", 0),
     ("break_even", "Verbrauchsgrenze ohne Nachzahlung", "kWh", None, None, "mdi:speedometer", 2),
+    ("grundlast", "Grundlast (gemessen)", "W", "power", "measurement", None, 0),
     ("letzte_ablesung", "Letzte Ablesung", None, "timestamp", None, None, None),
     ("tage_seit_ablesung", "Tage seit letzter Ablesung", "d", "duration", "measurement", None, 1),
 ]
@@ -63,6 +64,8 @@ def state_from_summary(s: dict, now: datetime) -> dict:
         out["prognose_monat_eur"] = round(m["eur_projected"], 2)
     if s.get("year"):
         out["prognose_jahr_kwh"] = round(s["year"]["kwh"])
+    if s.get("baseload"):
+        out["grundlast"] = round(s["baseload"]["mean_w"])
     p = s.get("period")
     if p:
         out["prognose_abrechnung_kwh"] = round(p["kwh_projected"])

@@ -15,8 +15,8 @@ Die Ablesungen prüft die App auf Plausibilität (Tippfehler, rückwärts laufen
 ## Installation auf dem OMV (Docker Compose)
 
 1. In OMV unter **Dienste → Compose → Dateien** eine neue Datei anlegen und den Inhalt von [`docker-compose.yml`](docker-compose.yml) einfügen.
-2. Den Datenpfad (`/srv/dev-disk-by-uuid-XXXX/appdata/stromverbrauch`) an deine Platte anpassen und bei Bedarf den Port `8085`.
-3. **Starten** („Up“). Die App läuft dann unter `http://<omv-ip>:8085`.
+2. Den Datenpfad (`/srv/dev-disk-by-uuid-XXXX/appdata/stromverbrauch`) an deine Platte anpassen und bei Bedarf den Port `8088`.
+3. **Starten** („Up“). Die App läuft dann unter `http://<omv-ip>:8088`.
 4. **Updates holen:** in OMV „Pull“ und dann „Up“ (oder automatisch per Watchtower).
 
 Das Image wird bei jedem Push auf `main` automatisch von GitHub Actions gebaut, für amd64 und arm64: `ghcr.io/llarsde/stromverbrauch:latest`.
@@ -35,7 +35,7 @@ Alternativ kannst du alles als JSON-Datei importieren (Einstellungen → Daten).
 
 ## Zugriff von unterwegs (Cloudflare-Tunnel)
 
-1. Im Cloudflare-Dashboard unter **Zero Trust → Networks → Tunnels** beim bestehenden Tunnel einen weiteren *Public Hostname* anlegen, z. B. `strom.deine-domain.de` → `http://<omv-ip>:8085`.
+1. Im Cloudflare-Dashboard unter **Zero Trust → Networks → Tunnels** beim bestehenden Tunnel einen weiteren *Public Hostname* anlegen, z. B. `strom.deine-domain.de` → `http://<omv-ip>:8088`.
 2. Für den neuen Hostnamen dieselbe mTLS-Regel bzw. Access-Policy aktivieren wie für Home Assistant (Gerätezertifikat).
 3. Auf dem Handy `https://strom.deine-domain.de` öffnen und **zum Home-Bildschirm hinzufügen**. Die App startet dann im Vollbild.
 
